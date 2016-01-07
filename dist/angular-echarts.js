@@ -1,3 +1,8 @@
+/**
+ *
+ * @require lib:angular.pack/angular/angular.js
+ *
+ */
 (function () {'use strict';
 /**
  * generate directive link function
@@ -23,11 +28,19 @@ function getLinkFunction($http, theme, util, type) {
                 showYAxis: true,
                 showLegend: true
             }, config);
-            var xAxis = angular.extend({
+
+            // 转换为数组
+            var xAxisList = [].concat(angular.isObject(config.xAxis) ? config.xAxis : {});
+            var yAxisList = [].concat(angular.isObject(config.yAxis) ? config.yAxis : {});
+
+            xAxisList = xAxisList.map(function (v) {
+                return angular.extend({
                     orient: 'top',
                     axisLine: { show: false }
-                }, angular.isObject(config.xAxis) ? config.xAxis : {});
-            var yAxis = angular.extend({
+                }, v);
+            });
+            yAxisList = yAxisList.map(function (v) {
+                return angular.extend({
                     type: 'value',
                     orient: 'right',
                     scale: false,
@@ -37,16 +50,30 @@ function getLinkFunction($http, theme, util, type) {
                             return util.formatKMBT(v);
                         }
                     }
-                }, angular.isObject(config.yAxis) ? config.yAxis : {});
+                }, v);
+            });
+
+            // 如果X轴Y轴相反，则反过来
+            if(xAxisList[0].type === 'value' && yAxisList[0].type === 'category'){
+                yAxisList = yAxisList.map(function (v) {
+                    return angular.extend(v, util.getAxisTicks(data, config, type));
+                });
+            }else{
+                xAxisList = xAxisList.map(function (v) {
+                    return angular.extend(v, util.getAxisTicks(data, config, type));
+                });
+            }
+
             // basic config
             var options = {
                     title: util.getTitle(data, config, type),
                     tooltip: util.getTooltip(data, config, type),
                     legend: util.getLegend(data, config, type),
                     toolbox: angular.extend({ show: false }, angular.isObject(config.toolbox) ? config.toolbox : {}),
-                    xAxis: [ angular.extend(xAxis, util.getAxisTicks(data, config, type)) ],
-                    yAxis: [ yAxis ],
-                    series: util.getSeries(data, config, type)
+                    xAxis: xAxisList,
+                    yAxis: yAxisList,
+                    series: util.getSeries(data, config, type),
+                    grid:   config.grid
                 };
             if (!config.showXAxis) {
                 angular.forEach(options.xAxis, function (axis) {
@@ -108,7 +135,7 @@ function getLinkFunction($http, theme, util, type) {
                         if (!chartEvent[ele.type]) {
                             chartEvent[ele.type] = true;
                             chart.on(ele.type, function (param) {
-                                ele.fn(param);
+                                ele.fn.apply(ele, arguments);
                             });
                         }
                     });
@@ -235,7 +262,7 @@ angular.module('angular-echarts.util', []).factory('util', function () {
         }
         return {
             type: 'category',
-            boundaryGap: type === 'bar',
+            //boundaryGap: type === 'bar',	// what are you nongshalei?
             data: ticks
         };
     }
@@ -254,11 +281,12 @@ angular.module('angular-echarts.util', []).factory('util', function () {
             angular.forEach(serie.datapoints, function (datapoint) {
                 datapoints.push(datapoint.y);
             });
-            var conf = {
-                    type: type || 'line',
-                    name: serie.name,
-                    data: datapoints
-                };
+            var conf = angular.extend({}, serie, {
+                type: serie.type || type || 'line',
+                name: serie.name,
+                data: datapoints
+            });
+
             // area chart is actually line chart with special itemStyle
             if (type === 'area') {
                 conf.type = 'line';
